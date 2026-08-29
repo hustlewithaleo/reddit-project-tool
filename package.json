@@ -1,0 +1,17 @@
+{
+  "name": "reddit-scraper",
+  "version": "1.0.0",
+  "description": "Watches subreddits for new posts matching keywords and posts matches to Discord.",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "once": "node src/index.js --once"
+  },
+  "dependencies": {
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.4.5",
+    "node-cron": "^3.0.3",
+    "undici": "^6.19.8"
+  }
+}
