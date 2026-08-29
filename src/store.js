@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
 
-const defaults = { subreddits: [], keywords: [], channelId: null };
+const defaults = { subreddits: ['entrepreneur', 'smallbusiness'], keywords: [], channelId: null };
 
 function load() {
   if (!existsSync(config.storeFilePath)) return { ...defaults };
