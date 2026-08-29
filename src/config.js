@@ -11,19 +11,20 @@ function required(name) {
 }
 
 export const config = {
-  reddit: {
-    clientId: required('REDDIT_CLIENT_ID'),
-    clientSecret: required('REDDIT_CLIENT_SECRET'),
-    username: required('REDDIT_USERNAME'),
-    password: required('REDDIT_PASSWORD'),
-    userAgent: process.env.REDDIT_USER_AGENT || 'reddit-scraper/1.0',
-  },
+  userAgent: process.env.REDDIT_USER_AGENT || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+  proxies: (process.env.PROXIES || '')
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean),
   discord: {
     botToken: required('DISCORD_BOT_TOKEN'),
     clientId: required('DISCORD_CLIENT_ID'),
     // Optional: registering commands to a single guild makes them show up
     // instantly. Without it, global commands can take up to an hour to propagate.
     guildId: process.env.DISCORD_GUILD_ID || null,
+  },
+  twitter: {
+    apiKey: process.env.TWITTERAPI_KEY || null,
   },
   cron: process.env.CHECK_CRON || '*/5 * * * *',
   seenFilePath: path.join(__dirname, '..', 'data', 'seen.json'),
