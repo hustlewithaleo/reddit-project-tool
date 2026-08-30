@@ -26,7 +26,11 @@ export const config = {
   twitter: {
     apiKey: process.env.TWITTERAPI_KEY || null,
   },
-  cron: process.env.CHECK_CRON || '*/5 * * * *',
+  // Reddit's check interval scales with subreddit count to hold total
+  // monthly requests roughly fixed (matches the pricing PullPush quoted:
+  // ~8,640 requests/month for 2 subreddits at a 10-minute interval).
+  redditMinutesPerSubreddit: Number(process.env.REDDIT_MINUTES_PER_SUBREDDIT || 5),
+  twitterCron: process.env.TWITTER_CHECK_CRON || '*/5 * * * *',
   seenFilePath: path.join(__dirname, '..', 'data', 'seen.json'),
   storeFilePath: path.join(__dirname, '..', 'data', 'store.json'),
 };

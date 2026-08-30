@@ -6,6 +6,10 @@ import { hasSeen, markSeen, persist } from './state.js';
 import { store } from './store.js';
 import { client, startBot } from './bot.js';
 
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection (ignored, bot stays up):', err);
+});
+
 function findMatches(text, keywords) {
   const haystack = text.toLowerCase();
   return keywords.filter((kw) => haystack.includes(kw));
@@ -15,10 +19,11 @@ async function postEmbed(embed) {
   const channelId = store.getChannelId();
   if (!channelId) {
     console.warn('No alert channel set. Run /set-channel in Discord first.');
-    return;
+    return false;
   }
   const channel = await client.channels.fetch(channelId);
   await channel.send({ embeds: [embed] });
+  return true;
 }
 
 async function checkReddit(keywords) {
@@ -38,13 +43,15 @@ async function checkReddit(keywords) {
   for (const post of posts) {
     const id = `reddit_${post.id}`;
     if (hasSeen(id)) continue;
-    markSeen(id);
 
     const matched = findMatches(`${post.title} ${post.selftext || ''}`, keywords);
-    if (matched.length === 0) continue;
+    if (matched.length === 0) {
+      markSeen(id);
+      continue;
+    }
 
     try {
-      await postEmbed({
+      const posted = await postEmbed({
         title: post.title.slice(0, 256),
         url: `https://www.reddit.com${post.permalink}`,
         description: (post.selftext || '').slice(0, 300),
@@ -57,7 +64,10 @@ async function checkReddit(keywords) {
         ],
         timestamp: new Date(post.created_utc * 1000).toISOString(),
       });
-      console.log(`Posted Reddit match: "${post.title}" (${matched.join(', ')})`);
+      if (posted) {
+        markSeen(id);
+        console.log(`Posted Reddit match: "${post.title}" (${matched.join(', ')})`);
+      }
     } catch (err) {
       console.error('Failed to post Reddit match to Discord:', err.message);
     }
@@ -80,13 +90,15 @@ async function checkTwitter(keywords) {
   for (const tweet of tweets) {
     const id = `twitter_${tweet.id}`;
     if (hasSeen(id)) continue;
-    markSeen(id);
 
     const matched = findMatches(tweet.text || '', keywords);
-    if (matched.length === 0) continue;
+    if (matched.length === 0) {
+      markSeen(id);
+      continue;
+    }
 
     try {
-      await postEmbed({
+      const posted = await postEmbed({
         title: (tweet.text || '').slice(0, 256),
         url: `https://x.com/${tweet.author?.userName}/status/${tweet.id}`,
         color: 0x1d9bf0,
@@ -97,24 +109,47 @@ async function checkTwitter(keywords) {
         ],
         timestamp: new Date(tweet.createdAt).toISOString(),
       });
-      console.log(`Posted Twitter/X match: "${tweet.text}" (${matched.join(', ')})`);
+      if (posted) {
+        markSeen(id);
+        console.log(`Posted Twitter/X match: "${tweet.text}" (${matched.join(', ')})`);
+      }
     } catch (err) {
       console.error('Failed to post Twitter/X match to Discord:', err.message);
     }
   }
 }
 
-async function runCheck() {
+async function runRedditCheck() {
   const keywords = store.getKeywords();
-  if (keywords.length === 0) {
-    console.log('No keywords configured yet — skipping check.');
-    return;
-  }
-
+  if (keywords.length === 0) return;
   await checkReddit(keywords);
-  await checkTwitter(keywords);
-
   persist();
+}
+
+async function runTwitterCheck() {
+  const keywords = store.getKeywords();
+  if (keywords.length === 0) return;
+  await checkTwitter(keywords);
+  persist();
+}
+
+function currentRedditIntervalMs() {
+  const subredditCount = Math.max(store.getSubreddits().length, 1);
+  const minutes = config.redditMinutesPerSubreddit * subredditCount;
+  return minutes * 60 * 1000;
+}
+
+// Reddit's interval scales with subreddit count (see config.js), so it's a
+// self-rescheduling loop rather than a fixed cron pattern — each run picks
+// the delay based on the subreddit count *at that time*, so /subreddit-add
+// and /subreddit-remove take effect on the next cycle automatically.
+function scheduleNextRedditCheck() {
+  const delayMs = currentRedditIntervalMs();
+  console.log(`Next Reddit check in ${Math.round(delayMs / 60000)} min.`);
+  setTimeout(async () => {
+    await runRedditCheck();
+    scheduleNextRedditCheck();
+  }, delayMs);
 }
 
 const runOnce = process.argv.includes('--once');
@@ -122,10 +157,17 @@ const runOnce = process.argv.includes('--once');
 await startBot();
 
 if (runOnce) {
-  await runCheck();
+  if (store.getKeywords().length === 0) {
+    console.log('No keywords configured yet — skipping check.');
+  } else {
+    await runRedditCheck();
+    await runTwitterCheck();
+  }
   client.destroy();
 } else {
-  console.log(`Scheduling checks with cron: ${config.cron}`);
-  runCheck();
-  cron.schedule(config.cron, runCheck);
+  console.log(`Scheduling Twitter/X checks with cron: ${config.twitterCron}`);
+  runRedditCheck();
+  runTwitterCheck();
+  scheduleNextRedditCheck();
+  cron.schedule(config.twitterCron, runTwitterCheck);
 }

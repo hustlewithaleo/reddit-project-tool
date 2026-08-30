@@ -10,13 +10,23 @@ client.on('interactionCreate', async (interaction) => {
     await handleCommand(interaction);
   } catch (err) {
     console.error(`Error handling /${interaction.commandName}:`, err);
-    const payload = { content: 'Something went wrong running that command.', ephemeral: true };
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(payload);
-    } else {
-      await interaction.reply(payload);
+    try {
+      const payload = { content: 'Something went wrong running that command.', ephemeral: true };
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp(payload);
+      } else {
+        await interaction.reply(payload);
+      }
+    } catch (reportErr) {
+      // The interaction itself may already be invalid/expired (e.g. it timed
+      // out) — failing to report the error shouldn't take the whole bot down.
+      console.error('Also failed to report the error back to Discord:', reportErr.message);
     }
   }
+});
+
+client.on('error', (err) => {
+  console.error('Discord client error:', err);
 });
 
 async function registerCommands() {

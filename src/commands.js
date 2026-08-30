@@ -1,5 +1,6 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { store } from './store.js';
+import { config } from './config.js';
 
 export const commandDefinitions = [
   new SlashCommandBuilder()
@@ -101,11 +102,13 @@ export async function handleCommand(interaction) {
       const subs = store.getSubreddits();
       const keywords = store.getKeywords();
       const channelId = store.getChannelId();
+      const redditIntervalMin = config.redditMinutesPerSubreddit * Math.max(subs.length, 1);
       await interaction.reply(
         [
           `**Subreddits:** ${subs.length ? subs.map((s) => `r/${s}`).join(', ') : 'none'}`,
           `**Keywords:** ${keywords.length ? keywords.map((k) => `\`${k}\``).join(', ') : 'none'}`,
           `**Alert channel:** ${channelId ? `<#${channelId}>` : 'not set — run /set-channel here'}`,
+          `**Reddit check interval:** every ${redditIntervalMin} min`,
         ].join('\n')
       );
       break;
