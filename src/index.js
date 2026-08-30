@@ -1,7 +1,6 @@
 import cron from 'node-cron';
 import { config } from './config.js';
-import { fetchNewComments } from './reddit.js';
-import { fetchNewPosts as fetchNewPostsApify } from './apify.js';
+import { fetchNewPosts, fetchNewComments } from './arcticshift.js';
 import { fetchNewTweets } from './twitter.js';
 import { hasSeen, markSeen, persist } from './state.js';
 import { store } from './store.js';
@@ -27,16 +26,12 @@ async function postEmbed(embed) {
   return true;
 }
 
-async function processApifyPosts(posts, keywords) {
+async function processRedditPosts(posts, keywords) {
   for (const post of posts) {
-    // Normalize to the bare Reddit base36 id so this shares dedup state
-    // with PullPush's post ids, should that source ever come back — post
-    // ids are the same underlying Reddit ids regardless of source.
-    const rawId = (post.parsedId || post.id || '').replace(/^t3_/, '');
-    const id = `reddit_post_${rawId}`;
+    const id = `reddit_post_${post.id}`;
     if (hasSeen(id)) continue;
 
-    const matched = findMatches(`${post.title || ''} ${post.body || ''}`, keywords);
+    const matched = findMatches(`${post.title || ''} ${post.selftext || ''}`, keywords);
     if (matched.length === 0) {
       markSeen(id);
       continue;
@@ -45,16 +40,16 @@ async function processApifyPosts(posts, keywords) {
     try {
       const posted = await postEmbed({
         title: (post.title || '').slice(0, 256),
-        url: post.postUrl || post.contentUrl,
-        description: (post.body || '').slice(0, 300),
+        url: `https://www.reddit.com${post.permalink}`,
+        description: (post.selftext || '').slice(0, 300),
         color: 0xff4500,
         fields: [
           { name: 'Source', value: 'Reddit post', inline: true },
-          { name: 'Subreddit', value: post.communityName || 'unknown', inline: true },
-          { name: 'Author', value: `u/${post.authorName}`, inline: true },
+          { name: 'Subreddit', value: `r/${post.subreddit}`, inline: true },
+          { name: 'Author', value: `u/${post.author}`, inline: true },
           { name: 'Matched', value: matched.join(', '), inline: true },
         ],
-        timestamp: post.createdAt,
+        timestamp: new Date(post.created_utc * 1000).toISOString(),
       });
       if (posted) {
         markSeen(id);
@@ -100,32 +95,24 @@ async function processRedditComments(comments, keywords) {
   }
 }
 
-async function checkRedditComments(keywords) {
+async function checkReddit(keywords) {
   const subreddits = store.getSubreddits();
   if (subreddits.length === 0) return;
 
-  console.log(`[${new Date().toISOString()}] Checking r/${subreddits.join(', r/')} comments (PullPush)...`);
+  console.log(`[${new Date().toISOString()}] Checking r/${subreddits.join(', r/')}...`);
+
+  try {
+    const posts = await fetchNewPosts(subreddits);
+    await processRedditPosts(posts, keywords);
+  } catch (err) {
+    console.error('Failed to fetch Reddit posts:', err.message);
+  }
 
   try {
     const comments = await fetchNewComments(subreddits);
     await processRedditComments(comments, keywords);
   } catch (err) {
     console.error('Failed to fetch Reddit comments:', err.message);
-  }
-}
-
-async function checkRedditPosts(keywords) {
-  if (!config.apify.apiToken) return;
-  const subreddits = store.getSubreddits();
-  if (subreddits.length === 0) return;
-
-  console.log(`[${new Date().toISOString()}] Checking r/${subreddits.join(', r/')} posts (Apify)...`);
-
-  try {
-    const posts = await fetchNewPostsApify(keywords, subreddits);
-    await processApifyPosts(posts, keywords);
-  } catch (err) {
-    console.error('Failed to fetch Reddit posts via Apify:', err.message);
   }
 }
 
@@ -174,17 +161,10 @@ async function checkTwitter(keywords) {
   }
 }
 
-async function runRedditCommentsCheck() {
+async function runRedditCheck() {
   const keywords = store.getKeywords();
   if (keywords.length === 0) return;
-  await checkRedditComments(keywords);
-  persist();
-}
-
-async function runRedditPostsCheck() {
-  const keywords = store.getKeywords();
-  if (keywords.length === 0) return;
-  await checkRedditPosts(keywords);
+  await checkReddit(keywords);
   persist();
 }
 
@@ -195,29 +175,6 @@ async function runTwitterCheck() {
   persist();
 }
 
-function currentRedditCommentsIntervalMs() {
-  const subredditCount = Math.max(store.getSubreddits().length, 1);
-  const minutes =
-    config.redditMinutesPerSubreddit * subredditCount * config.redditRequestTypesPerSubreddit;
-  return minutes * 60 * 1000;
-}
-
-// Reddit comments' interval scales with subreddit count (see config.js), so
-// it's a self-rescheduling loop rather than a fixed cron pattern — each run
-// picks the delay based on the subreddit count *at that time*, so
-// /subreddit-add and /subreddit-remove take effect on the next cycle
-// automatically. Posts (Apify) use a fixed hourly cron instead, since their
-// cost is dominated by a flat per-run fee rather than scaling with subreddit
-// count the same way.
-function scheduleNextRedditCommentsCheck() {
-  const delayMs = currentRedditCommentsIntervalMs();
-  console.log(`Next Reddit comments check in ${Math.round(delayMs / 60000)} min.`);
-  setTimeout(async () => {
-    await runRedditCommentsCheck();
-    scheduleNextRedditCommentsCheck();
-  }, delayMs);
-}
-
 const runOnce = process.argv.includes('--once');
 
 await startBot();
@@ -226,18 +183,15 @@ if (runOnce) {
   if (store.getKeywords().length === 0) {
     console.log('No keywords configured yet — skipping check.');
   } else {
-    await runRedditCommentsCheck();
-    await runRedditPostsCheck();
+    await runRedditCheck();
     await runTwitterCheck();
   }
   client.destroy();
 } else {
+  console.log(`Scheduling Reddit checks with cron: ${config.redditCron}`);
   console.log(`Scheduling Twitter/X checks with cron: ${config.twitterCron}`);
-  console.log(`Scheduling Reddit posts (Apify) checks with cron: ${config.apify.cron}`);
-  runRedditCommentsCheck();
-  runRedditPostsCheck();
+  runRedditCheck();
   runTwitterCheck();
-  scheduleNextRedditCommentsCheck();
+  cron.schedule(config.redditCron, runRedditCheck);
   cron.schedule(config.twitterCron, runTwitterCheck);
-  cron.schedule(config.apify.cron, runRedditPostsCheck);
 }
