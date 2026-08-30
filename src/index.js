@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import { config } from './config.js';
-import { fetchNewPosts } from './reddit.js';
+import { fetchNewPosts, fetchNewComments } from './reddit.js';
 import { fetchNewTweets } from './twitter.js';
 import { hasSeen, markSeen, persist } from './state.js';
 import { store } from './store.js';
@@ -26,22 +26,9 @@ async function postEmbed(embed) {
   return true;
 }
 
-async function checkReddit(keywords) {
-  const subreddits = store.getSubreddits();
-  if (subreddits.length === 0) return;
-
-  console.log(`[${new Date().toISOString()}] Checking r/${subreddits.join(', r/')}...`);
-
-  let posts;
-  try {
-    posts = await fetchNewPosts(subreddits);
-  } catch (err) {
-    console.error('Failed to fetch Reddit posts:', err.message);
-    return;
-  }
-
+async function processRedditPosts(posts, keywords) {
   for (const post of posts) {
-    const id = `reddit_${post.id}`;
+    const id = `reddit_post_${post.id}`;
     if (hasSeen(id)) continue;
 
     const matched = findMatches(`${post.title} ${post.selftext || ''}`, keywords);
@@ -57,7 +44,7 @@ async function checkReddit(keywords) {
         description: (post.selftext || '').slice(0, 300),
         color: 0xff4500,
         fields: [
-          { name: 'Source', value: 'Reddit', inline: true },
+          { name: 'Source', value: 'Reddit post', inline: true },
           { name: 'Subreddit', value: `r/${post.subreddit}`, inline: true },
           { name: 'Author', value: `u/${post.author}`, inline: true },
           { name: 'Matched', value: matched.join(', '), inline: true },
@@ -66,11 +53,66 @@ async function checkReddit(keywords) {
       });
       if (posted) {
         markSeen(id);
-        console.log(`Posted Reddit match: "${post.title}" (${matched.join(', ')})`);
+        console.log(`Posted Reddit post match: "${post.title}" (${matched.join(', ')})`);
       }
     } catch (err) {
-      console.error('Failed to post Reddit match to Discord:', err.message);
+      console.error('Failed to post Reddit post match to Discord:', err.message);
     }
+  }
+}
+
+async function processRedditComments(comments, keywords) {
+  for (const comment of comments) {
+    const id = `reddit_comment_${comment.id}`;
+    if (hasSeen(id)) continue;
+
+    const matched = findMatches(comment.body || '', keywords);
+    if (matched.length === 0) {
+      markSeen(id);
+      continue;
+    }
+
+    try {
+      const posted = await postEmbed({
+        title: (comment.body || '').slice(0, 256),
+        url: `https://www.reddit.com${comment.permalink}`,
+        color: 0xff4500,
+        fields: [
+          { name: 'Source', value: 'Reddit comment', inline: true },
+          { name: 'Subreddit', value: `r/${comment.subreddit}`, inline: true },
+          { name: 'Author', value: `u/${comment.author}`, inline: true },
+          { name: 'Matched', value: matched.join(', '), inline: true },
+        ],
+        timestamp: new Date(comment.created_utc * 1000).toISOString(),
+      });
+      if (posted) {
+        markSeen(id);
+        console.log(`Posted Reddit comment match: "${comment.body}" (${matched.join(', ')})`);
+      }
+    } catch (err) {
+      console.error('Failed to post Reddit comment match to Discord:', err.message);
+    }
+  }
+}
+
+async function checkReddit(keywords) {
+  const subreddits = store.getSubreddits();
+  if (subreddits.length === 0) return;
+
+  console.log(`[${new Date().toISOString()}] Checking r/${subreddits.join(', r/')}...`);
+
+  try {
+    const posts = await fetchNewPosts(subreddits);
+    await processRedditPosts(posts, keywords);
+  } catch (err) {
+    console.error('Failed to fetch Reddit posts:', err.message);
+  }
+
+  try {
+    const comments = await fetchNewComments(subreddits);
+    await processRedditComments(comments, keywords);
+  } catch (err) {
+    console.error('Failed to fetch Reddit comments:', err.message);
   }
 }
 
@@ -135,7 +177,8 @@ async function runTwitterCheck() {
 
 function currentRedditIntervalMs() {
   const subredditCount = Math.max(store.getSubreddits().length, 1);
-  const minutes = config.redditMinutesPerSubreddit * subredditCount;
+  const minutes =
+    config.redditMinutesPerSubreddit * subredditCount * config.redditRequestTypesPerSubreddit;
   return minutes * 60 * 1000;
 }
 

@@ -11,11 +11,9 @@ function required(name) {
 }
 
 export const config = {
-  userAgent: process.env.REDDIT_USER_AGENT || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-  proxies: (process.env.PROXIES || '')
-    .split(',')
-    .map((p) => p.trim())
-    .filter(Boolean),
+  pullpush: {
+    apiKey: required('PULLPUSH_API_KEY'),
+  },
   discord: {
     botToken: required('DISCORD_BOT_TOKEN'),
     clientId: required('DISCORD_CLIENT_ID'),
@@ -26,10 +24,12 @@ export const config = {
   twitter: {
     apiKey: process.env.TWITTERAPI_KEY || null,
   },
-  // Reddit's check interval scales with subreddit count to hold total
-  // monthly requests roughly fixed (matches the pricing PullPush quoted:
-  // ~8,640 requests/month for 2 subreddits at a 10-minute interval).
+  // Reddit's check interval scales with subreddit count (and now request
+  // type — posts and comments are separate PullPush requests) to hold
+  // total monthly requests roughly fixed against the quoted pricing:
+  // ~8,640 requests/month for 2 subreddits x 1 request type at 10 min.
   redditMinutesPerSubreddit: Number(process.env.REDDIT_MINUTES_PER_SUBREDDIT || 5),
+  redditRequestTypesPerSubreddit: 2, // posts + comments
   twitterCron: process.env.TWITTER_CHECK_CRON || '*/5 * * * *',
   seenFilePath: path.join(__dirname, '..', 'data', 'seen.json'),
   storeFilePath: path.join(__dirname, '..', 'data', 'store.json'),

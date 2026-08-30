@@ -102,7 +102,10 @@ export async function handleCommand(interaction) {
       const subs = store.getSubreddits();
       const keywords = store.getKeywords();
       const channelId = store.getChannelId();
-      const redditIntervalMin = config.redditMinutesPerSubreddit * Math.max(subs.length, 1);
+      const redditIntervalMin =
+        config.redditMinutesPerSubreddit *
+        Math.max(subs.length, 1) *
+        config.redditRequestTypesPerSubreddit;
       await interaction.reply(
         [
           `**Subreddits:** ${subs.length ? subs.map((s) => `r/${s}`).join(', ') : 'none'}`,
