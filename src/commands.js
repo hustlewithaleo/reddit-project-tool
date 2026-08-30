@@ -102,7 +102,7 @@ export async function handleCommand(interaction) {
       const subs = store.getSubreddits();
       const keywords = store.getKeywords();
       const channelId = store.getChannelId();
-      const redditIntervalMin =
+      const commentsIntervalMin =
         config.redditMinutesPerSubreddit *
         Math.max(subs.length, 1) *
         config.redditRequestTypesPerSubreddit;
@@ -111,7 +111,9 @@ export async function handleCommand(interaction) {
           `**Subreddits:** ${subs.length ? subs.map((s) => `r/${s}`).join(', ') : 'none'}`,
           `**Keywords:** ${keywords.length ? keywords.map((k) => `\`${k}\``).join(', ') : 'none'}`,
           `**Alert channel:** ${channelId ? `<#${channelId}>` : 'not set — run /set-channel here'}`,
-          `**Reddit check interval:** every ${redditIntervalMin} min`,
+          `**Reddit posts (Apify):** ${config.apify.apiToken ? `every hour` : 'disabled — no APIFY_API_TOKEN set'}`,
+          `**Reddit comments (PullPush):** ${config.pullpush.apiKey ? `every ${commentsIntervalMin} min (currently stale — dataset frozen)` : 'disabled — no PULLPUSH_API_KEY set'}`,
+          `**Twitter/X:** ${config.twitter.apiKey ? 'every 5 min' : 'disabled — no TWITTERAPI_KEY set'}`,
         ].join('\n')
       );
       break;
