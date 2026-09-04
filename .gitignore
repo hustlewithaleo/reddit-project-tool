@@ -2,5 +2,6 @@ node_modules/
 .env
 data/seen.json
 data/store.json
+data/twitter-budget.json
 *.log
 run-bot.bat

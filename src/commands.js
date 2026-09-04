@@ -1,6 +1,7 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { store } from './store.js';
 import { config } from './config.js';
+import { twitterBudget } from './twitterBudget.js';
 
 // Discord message content is capped at 2000 chars — with 100+ subreddits or
 // keywords, joining the full list can blow past that and make the whole
@@ -155,7 +156,11 @@ export async function handleCommand(interaction) {
           `**Keywords (${keywords.length}):** ${formatList(keywords, (k) => `\`${k}\``, 600)}`,
           `**Course-lead channel:** ${courseChannelId ? `<#${courseChannelId}>` : 'not set — run /set-course-channel here'}`,
           `**Reddit (posts + comments, via Arctic Shift):** every 5 min`,
-          `**Twitter/X:** ${config.twitter.apiKey ? 'every 5 min' : 'disabled — no TWITTERAPI_KEY set'}`,
+          `**Twitter/X:** ${
+            config.twitter.apiKey
+              ? `every 5 min — $${twitterBudget.getStatus().spentUsd.toFixed(2)}/$${twitterBudget.getStatus().capUsd} spent this month`
+              : 'disabled — no TWITTERAPI_KEY set'
+          }`,
           `**Lead classification (Claude):** ${config.anthropic.apiKey ? 'enabled' : 'disabled — no ANTHROPIC_API_KEY set, nothing will be posted'}`,
         ].join('\n')
       );
