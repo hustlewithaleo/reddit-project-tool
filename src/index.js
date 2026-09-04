@@ -16,7 +16,7 @@ function findMatches(text, keywords) {
   return keywords.filter((kw) => haystack.includes(kw));
 }
 
-const CATEGORY_LABEL = { course: 'Course lead', ecommerce: 'Ecommerce lead' };
+const CATEGORY_LABEL = { course: 'Course lead' };
 
 /**
  * Runs the full pipeline for one fetched item: keyword pre-filter, then
@@ -42,10 +42,9 @@ async function handleItem({ id, text, keywords, buildEmbed }) {
     return;
   }
 
-  const channelId =
-    category === 'course' ? store.getCourseChannelId() : store.getEcommerceChannelId();
+  const channelId = store.getCourseChannelId();
   if (!channelId) {
-    console.warn(`${CATEGORY_LABEL[category]} found but no channel set — run /set-${category}-channel in Discord.`);
+    console.warn(`${CATEGORY_LABEL[category]} found but no channel set — run /set-course-channel in Discord.`);
     return;
   }
 

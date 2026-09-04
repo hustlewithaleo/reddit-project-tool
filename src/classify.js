@@ -13,11 +13,10 @@ The text you're given already matched a keyword search — most matches are nois
 
 Classify into exactly one category:
 - "course": the author is asking about, looking for, requesting, or discussing wanting access to a specific paid course or training program (any course, not just ours) — e.g. "does anyone have X course", "looking for a dropshipping course", "is Y course worth the money", "anyone selling access to Z".
-- "ecommerce": the author expresses genuine interest in starting, growing, or learning how to run an ecommerce or dropshipping business, without specifically asking for a course — e.g. "how do I start dropshipping", "thinking about starting an online store", "struggling to grow my shopify sales".
-- "none": neither — the keyword match is incidental, unrelated, or too vague to be a real lead (e.g. mentions "funding" in a political context, "hiring" for an unrelated job, etc.).
+- "none": not a course-seeking lead — the keyword match is incidental, unrelated, or too vague (e.g. mentions "funding" in a political context, "hiring" for an unrelated job, general ecommerce chat with no course interest, etc.).
 
 Respond with ONLY a JSON object, no other text, no markdown fences:
-{"category": "course" | "ecommerce" | "none", "summary": "one sentence explaining why this is (or isn't) a good lead, empty string if none"}`;
+{"category": "course" | "none", "summary": "one sentence explaining why this is (or isn't) a good lead, empty string if none"}`;
 
 /**
  * Classifies a keyword-matched piece of text into a lead category, with a
@@ -42,7 +41,7 @@ export async function classifyLead(text) {
     if (!textBlock) return { category: 'none', summary: '' };
 
     const parsed = JSON.parse(textBlock.text.trim());
-    if (!['course', 'ecommerce', 'none'].includes(parsed.category)) {
+    if (!['course', 'none'].includes(parsed.category)) {
       return { category: 'none', summary: '' };
     }
     return { category: parsed.category, summary: parsed.summary || '' };

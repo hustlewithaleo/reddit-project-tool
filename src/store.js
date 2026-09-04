@@ -6,7 +6,6 @@ const defaults = {
   subreddits: ['entrepreneur', 'smallbusiness'],
   keywords: [],
   courseChannelId: null,
-  ecommerceChannelId: null,
 };
 
 function load() {
@@ -61,12 +60,6 @@ export const store = {
   getCourseChannelId: () => state.courseChannelId,
   setCourseChannelId(id) {
     state.courseChannelId = id;
-    persist();
-  },
-
-  getEcommerceChannelId: () => state.ecommerceChannelId,
-  setEcommerceChannelId(id) {
-    state.ecommerceChannelId = id;
     persist();
   },
 };
