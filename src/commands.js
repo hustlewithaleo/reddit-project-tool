@@ -16,6 +16,12 @@ export const commandDefinitions = [
       opt.setName('word').setDescription('Keyword or phrase').setRequired(true)
     ),
   new SlashCommandBuilder().setName('keyword-list').setDescription('List watched keywords'),
+  new SlashCommandBuilder()
+    .setName('keyword-add-bulk')
+    .setDescription('Add many keywords at once')
+    .addStringOption((opt) =>
+      opt.setName('words').setDescription('Comma-separated keywords/phrases').setRequired(true)
+    ),
 
   new SlashCommandBuilder()
     .setName('subreddit-add')
@@ -72,6 +78,15 @@ export async function handleCommand(interaction) {
       await interaction.reply(
         keywords.length ? `Watched keywords: ${keywords.map((k) => `\`${k}\``).join(', ')}` : 'No keywords set yet.'
       );
+      break;
+    }
+    case 'keyword-add-bulk': {
+      const words = interaction.options.getString('words').split(',').map((w) => w.trim()).filter(Boolean);
+      let added = 0;
+      for (const word of words) {
+        if (store.addKeyword(word)) added++;
+      }
+      await interaction.reply(`Added ${added} new keyword(s). Watching ${store.getKeywords().length} total.`);
       break;
     }
 

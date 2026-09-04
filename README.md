@@ -26,6 +26,7 @@ Reddit itself needs no API key or paid service — it uses a free public archive
 - `/keyword-add word:<text>` — start watching a keyword (used for both Reddit and Twitter/X)
 - `/keyword-remove word:<text>` — stop watching a keyword
 - `/keyword-list` — show watched keywords
+- `/keyword-add-bulk words:<word1,word2,...>` — add many keywords at once, comma-separated
 - `/subreddit-add name:<sub>` — monitor a subreddit (Reddit only — Twitter/X search isn't scoped to a subforum)
 - `/subreddit-remove name:<sub>` — stop monitoring a subreddit
 - `/subreddit-list` — show monitored subreddits
