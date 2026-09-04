@@ -2,7 +2,12 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
 
-const defaults = { subreddits: ['entrepreneur', 'smallbusiness'], keywords: [], channelId: null };
+const defaults = {
+  subreddits: ['entrepreneur', 'smallbusiness'],
+  keywords: [],
+  courseChannelId: null,
+  ecommerceChannelId: null,
+};
 
 function load() {
   if (!existsSync(config.storeFilePath)) return { ...defaults };
@@ -53,9 +58,15 @@ export const store = {
     return state.keywords.length < before;
   },
 
-  getChannelId: () => state.channelId,
-  setChannelId(id) {
-    state.channelId = id;
+  getCourseChannelId: () => state.courseChannelId,
+  setCourseChannelId(id) {
+    state.courseChannelId = id;
+    persist();
+  },
+
+  getEcommerceChannelId: () => state.ecommerceChannelId,
+  setEcommerceChannelId(id) {
+    state.ecommerceChannelId = id;
     persist();
   },
 };

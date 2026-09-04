@@ -32,8 +32,11 @@ export const commandDefinitions = [
   new SlashCommandBuilder().setName('subreddit-list').setDescription('List monitored subreddits'),
 
   new SlashCommandBuilder()
-    .setName('set-channel')
-    .setDescription('Post keyword matches to the channel this command is run in'),
+    .setName('set-course-channel')
+    .setDescription('Post course-seeker leads to the channel this command is run in'),
+  new SlashCommandBuilder()
+    .setName('set-ecommerce-channel')
+    .setDescription('Post ecommerce-interest leads to the channel this command is run in'),
 
   new SlashCommandBuilder()
     .setName('status')
@@ -92,23 +95,31 @@ export async function handleCommand(interaction) {
       break;
     }
 
-    case 'set-channel': {
-      store.setChannelId(interaction.channelId);
-      await interaction.reply('This channel will now receive keyword match alerts.');
+    case 'set-course-channel': {
+      store.setCourseChannelId(interaction.channelId);
+      await interaction.reply('This channel will now receive course-seeker leads.');
+      break;
+    }
+    case 'set-ecommerce-channel': {
+      store.setEcommerceChannelId(interaction.channelId);
+      await interaction.reply('This channel will now receive ecommerce-interest leads.');
       break;
     }
 
     case 'status': {
       const subs = store.getSubreddits();
       const keywords = store.getKeywords();
-      const channelId = store.getChannelId();
+      const courseChannelId = store.getCourseChannelId();
+      const ecommerceChannelId = store.getEcommerceChannelId();
       await interaction.reply(
         [
           `**Subreddits:** ${subs.length ? subs.map((s) => `r/${s}`).join(', ') : 'none'}`,
           `**Keywords:** ${keywords.length ? keywords.map((k) => `\`${k}\``).join(', ') : 'none'}`,
-          `**Alert channel:** ${channelId ? `<#${channelId}>` : 'not set — run /set-channel here'}`,
+          `**Course-lead channel:** ${courseChannelId ? `<#${courseChannelId}>` : 'not set — run /set-course-channel here'}`,
+          `**Ecommerce-lead channel:** ${ecommerceChannelId ? `<#${ecommerceChannelId}>` : 'not set — run /set-ecommerce-channel here'}`,
           `**Reddit (posts + comments, via Arctic Shift):** every 5 min`,
           `**Twitter/X:** ${config.twitter.apiKey ? 'every 5 min' : 'disabled — no TWITTERAPI_KEY set'}`,
+          `**Lead classification (Claude):** ${config.anthropic.apiKey ? 'enabled' : 'disabled — no ANTHROPIC_API_KEY set, nothing will be posted'}`,
         ].join('\n')
       );
       break;

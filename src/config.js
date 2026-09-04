@@ -21,6 +21,9 @@ export const config = {
   twitter: {
     apiKey: process.env.TWITTERAPI_KEY || null,
   },
+  anthropic: {
+    apiKey: process.env.ANTHROPIC_API_KEY || null,
+  },
   redditCron: process.env.REDDIT_CHECK_CRON || '*/5 * * * *',
   twitterCron: process.env.TWITTER_CHECK_CRON || '*/5 * * * *',
   seenFilePath: path.join(__dirname, '..', 'data', 'seen.json'),

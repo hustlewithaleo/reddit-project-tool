@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { config } from './config.js';
 import { fetchNewPosts, fetchNewComments } from './arcticshift.js';
 import { fetchNewTweets } from './twitter.js';
+import { classifyLead } from './classify.js';
 import { hasSeen, markSeen, persist } from './state.js';
 import { store } from './store.js';
 import { client, startBot } from './bot.js';
@@ -15,83 +16,46 @@ function findMatches(text, keywords) {
   return keywords.filter((kw) => haystack.includes(kw));
 }
 
-async function postEmbed(embed) {
-  const channelId = store.getChannelId();
+const CATEGORY_LABEL = { course: 'Course lead', ecommerce: 'Ecommerce lead' };
+
+/**
+ * Runs the full pipeline for one fetched item: keyword pre-filter, then
+ * (only for actual matches) Claude classification into a lead category
+ * with a summary, then posting to the matching lead channel. Items that
+ * don't keyword-match, or that Claude classifies as "none", are marked
+ * seen and dropped — nothing gets posted for them. Items that DO
+ * classify as a lead but have no channel configured yet are deliberately
+ * NOT marked seen, so they're retried once the channel is set.
+ */
+async function handleItem({ id, text, keywords, buildEmbed }) {
+  if (hasSeen(id)) return;
+
+  const matched = findMatches(text, keywords);
+  if (matched.length === 0) {
+    markSeen(id);
+    return;
+  }
+
+  const { category, summary } = await classifyLead(text);
+  if (category === 'none') {
+    markSeen(id);
+    return;
+  }
+
+  const channelId =
+    category === 'course' ? store.getCourseChannelId() : store.getEcommerceChannelId();
   if (!channelId) {
-    console.warn('No alert channel set. Run /set-channel in Discord first.');
-    return false;
+    console.warn(`${CATEGORY_LABEL[category]} found but no channel set — run /set-${category}-channel in Discord.`);
+    return;
   }
-  const channel = await client.channels.fetch(channelId);
-  await channel.send({ embeds: [embed] });
-  return true;
-}
 
-async function processRedditPosts(posts, keywords) {
-  for (const post of posts) {
-    const id = `reddit_post_${post.id}`;
-    if (hasSeen(id)) continue;
-
-    const matched = findMatches(`${post.title || ''} ${post.selftext || ''}`, keywords);
-    if (matched.length === 0) {
-      markSeen(id);
-      continue;
-    }
-
-    try {
-      const posted = await postEmbed({
-        title: (post.title || '').slice(0, 256),
-        url: `https://www.reddit.com${post.permalink}`,
-        description: (post.selftext || '').slice(0, 300),
-        color: 0xff4500,
-        fields: [
-          { name: 'Source', value: 'Reddit post', inline: true },
-          { name: 'Subreddit', value: `r/${post.subreddit}`, inline: true },
-          { name: 'Author', value: `u/${post.author}`, inline: true },
-          { name: 'Matched', value: matched.join(', '), inline: true },
-        ],
-        timestamp: new Date(post.created_utc * 1000).toISOString(),
-      });
-      if (posted) {
-        markSeen(id);
-        console.log(`Posted Reddit post match: "${post.title}" (${matched.join(', ')})`);
-      }
-    } catch (err) {
-      console.error('Failed to post Reddit post match to Discord:', err.message);
-    }
-  }
-}
-
-async function processRedditComments(comments, keywords) {
-  for (const comment of comments) {
-    const id = `reddit_comment_${comment.id}`;
-    if (hasSeen(id)) continue;
-
-    const matched = findMatches(comment.body || '', keywords);
-    if (matched.length === 0) {
-      markSeen(id);
-      continue;
-    }
-
-    try {
-      const posted = await postEmbed({
-        title: (comment.body || '').slice(0, 256),
-        url: `https://www.reddit.com${comment.permalink}`,
-        color: 0xff4500,
-        fields: [
-          { name: 'Source', value: 'Reddit comment', inline: true },
-          { name: 'Subreddit', value: `r/${comment.subreddit}`, inline: true },
-          { name: 'Author', value: `u/${comment.author}`, inline: true },
-          { name: 'Matched', value: matched.join(', '), inline: true },
-        ],
-        timestamp: new Date(comment.created_utc * 1000).toISOString(),
-      });
-      if (posted) {
-        markSeen(id);
-        console.log(`Posted Reddit comment match: "${comment.body}" (${matched.join(', ')})`);
-      }
-    } catch (err) {
-      console.error('Failed to post Reddit comment match to Discord:', err.message);
-    }
+  try {
+    const channel = await client.channels.fetch(channelId);
+    await channel.send({ embeds: [buildEmbed(matched, summary, category)] });
+    markSeen(id);
+    console.log(`Posted ${CATEGORY_LABEL[category]}: "${text.slice(0, 80)}"`);
+  } catch (err) {
+    console.error(`Failed to post ${category} lead to Discord:`, err.message);
   }
 }
 
@@ -103,14 +67,55 @@ async function checkReddit(keywords) {
 
   try {
     const posts = await fetchNewPosts(subreddits);
-    await processRedditPosts(posts, keywords);
+    for (const post of posts) {
+      await handleItem({
+        id: `reddit_post_${post.id}`,
+        text: `${post.title || ''} ${post.selftext || ''}`,
+        keywords,
+        buildEmbed: (matched, summary, category) => ({
+          title: (post.title || '').slice(0, 256),
+          url: `https://www.reddit.com${post.permalink}`,
+          description: (post.selftext || '').slice(0, 300),
+          color: 0xff4500,
+          fields: [
+            { name: 'Source', value: 'Reddit post', inline: true },
+            { name: 'Subreddit', value: `r/${post.subreddit}`, inline: true },
+            { name: 'Author', value: `u/${post.author}`, inline: true },
+            { name: 'Category', value: CATEGORY_LABEL[category], inline: true },
+            { name: 'Matched', value: matched.join(', '), inline: true },
+            { name: 'Why', value: summary || 'n/a' },
+          ],
+          timestamp: new Date(post.created_utc * 1000).toISOString(),
+        }),
+      });
+    }
   } catch (err) {
     console.error('Failed to fetch Reddit posts:', err.message);
   }
 
   try {
     const comments = await fetchNewComments(subreddits);
-    await processRedditComments(comments, keywords);
+    for (const comment of comments) {
+      await handleItem({
+        id: `reddit_comment_${comment.id}`,
+        text: comment.body || '',
+        keywords,
+        buildEmbed: (matched, summary, category) => ({
+          title: (comment.body || '').slice(0, 256),
+          url: `https://www.reddit.com${comment.permalink}`,
+          color: 0xff4500,
+          fields: [
+            { name: 'Source', value: 'Reddit comment', inline: true },
+            { name: 'Subreddit', value: `r/${comment.subreddit}`, inline: true },
+            { name: 'Author', value: `u/${comment.author}`, inline: true },
+            { name: 'Category', value: CATEGORY_LABEL[category], inline: true },
+            { name: 'Matched', value: matched.join(', '), inline: true },
+            { name: 'Why', value: summary || 'n/a' },
+          ],
+          timestamp: new Date(comment.created_utc * 1000).toISOString(),
+        }),
+      });
+    }
   } catch (err) {
     console.error('Failed to fetch Reddit comments:', err.message);
   }
@@ -130,34 +135,24 @@ async function checkTwitter(keywords) {
   }
 
   for (const tweet of tweets) {
-    const id = `twitter_${tweet.id}`;
-    if (hasSeen(id)) continue;
-
-    const matched = findMatches(tweet.text || '', keywords);
-    if (matched.length === 0) {
-      markSeen(id);
-      continue;
-    }
-
-    try {
-      const posted = await postEmbed({
+    await handleItem({
+      id: `twitter_${tweet.id}`,
+      text: tweet.text || '',
+      keywords,
+      buildEmbed: (matched, summary, category) => ({
         title: (tweet.text || '').slice(0, 256),
         url: `https://x.com/${tweet.author?.userName}/status/${tweet.id}`,
         color: 0x1d9bf0,
         fields: [
           { name: 'Source', value: 'Twitter/X', inline: true },
           { name: 'Author', value: `@${tweet.author?.userName}`, inline: true },
+          { name: 'Category', value: CATEGORY_LABEL[category], inline: true },
           { name: 'Matched', value: matched.join(', '), inline: true },
+          { name: 'Why', value: summary || 'n/a' },
         ],
         timestamp: new Date(tweet.createdAt).toISOString(),
-      });
-      if (posted) {
-        markSeen(id);
-        console.log(`Posted Twitter/X match: "${tweet.text}" (${matched.join(', ')})`);
-      }
-    } catch (err) {
-      console.error('Failed to post Twitter/X match to Discord:', err.message);
-    }
+      }),
+    });
   }
 }
 
@@ -178,6 +173,10 @@ async function runTwitterCheck() {
 const runOnce = process.argv.includes('--once');
 
 await startBot();
+
+if (!config.anthropic.apiKey) {
+  console.warn('ANTHROPIC_API_KEY not set — lead classification is disabled, nothing will be posted.');
+}
 
 if (runOnce) {
   if (store.getKeywords().length === 0) {

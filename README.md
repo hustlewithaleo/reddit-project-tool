@@ -1,6 +1,12 @@
 # reddit-scraper
 
-A Discord bot that watches Reddit (posts + comments) and (optionally) Twitter/X for content matching keywords you manage with slash commands, and posts matches to a channel.
+A Discord bot built for shipex.courses lead generation. Watches Reddit (posts + comments) and Twitter/X for keyword matches, then uses Claude to classify each match as a real lead (or discard it) and posts qualifying ones — with a short AI-written summary — to one of two channels.
+
+## Lead categories
+
+- **Course lead**: someone asking about, looking for, or wanting access to a specific paid course (any course) — a direct fit for shipex.courses' $29/month all-access to 41 courses.
+- **Ecommerce lead**: someone interested in starting/growing an ecommerce or dropshipping business generally, without asking for a specific course.
+- Everything else that merely contains a keyword but isn't a real lead gets silently discarded — nothing is posted for it.
 
 ## Setup
 
@@ -10,8 +16,9 @@ A Discord bot that watches Reddit (posts + comments) and (optionally) Twitter/X 
    - "OAuth2" tab: copy the Application (client) ID
    - "OAuth2 > URL Generator": check `bot` and `applications.commands` scopes, and under Bot Permissions check `Send Messages` and `Embed Links`. Open the generated URL to invite it to your server.
 3. Copy `.env.example` to `.env` and fill in the Discord values.
-4. (Optional, for Twitter/X) Sign up at https://twitterapi.io, get an API key, and set `TWITTERAPI_KEY` in `.env`. Billed per tweet read (~$0.15/1,000) — leave blank to run Reddit-only.
-5. `npm start`
+4. Get an Anthropic API key at https://console.anthropic.com and set `ANTHROPIC_API_KEY` — required for lead classification; without it, matches are found but nothing gets posted.
+5. (Optional, for Twitter/X) Sign up at https://twitterapi.io, get an API key, and set `TWITTERAPI_KEY` in `.env`. Billed per tweet read (~$0.15/1,000) — leave blank to run Reddit-only.
+6. `npm start`
 
 Reddit itself needs no API key or paid service — it uses a free public archive (see below).
 
@@ -23,10 +30,11 @@ Reddit itself needs no API key or paid service — it uses a free public archive
 - `/subreddit-add name:<sub>` — monitor a subreddit (Reddit only — Twitter/X search isn't scoped to a subforum)
 - `/subreddit-remove name:<sub>` — stop monitoring a subreddit
 - `/subreddit-list` — show monitored subreddits
-- `/set-channel` — run this in the channel where you want match alerts posted
+- `/set-course-channel` — run this in the channel where course leads should post
+- `/set-ecommerce-channel` — run this in the channel where ecommerce leads should post
 - `/status` — show current config
 
-Defaults to monitoring r/entrepreneur and r/smallbusiness on first run (changeable anytime). Nothing is posted to Discord until you've added at least one keyword and run `/set-channel`. Twitter/X checks only run if `TWITTERAPI_KEY` is set.
+Defaults to monitoring r/entrepreneur and r/smallbusiness on first run (changeable anytime). Nothing is posted until you've added at least one keyword, set both channels, and set `ANTHROPIC_API_KEY`. Twitter/X checks only run if `TWITTERAPI_KEY` is set.
 
 ## Run
 
@@ -44,8 +52,8 @@ Runs a single check and exits — useful for testing your config/credentials.
 
 ## How it works
 
-- **Reddit**: fetches posts and comments per subreddit from [Arctic Shift](https://arctic-shift.photon-reddit.com) (`arctic-shift.photon-reddit.com`), a free, unauthenticated Reddit archive. New content appears within minutes of posting (only vote/comment counts take up to ~36h to finalize, which this bot doesn't use). It's a small free service with no uptime guarantee, so occasional fetch failures are logged and skipped rather than treated as fatal.
-- **Twitter/X**: uses TwitterAPI.io's advanced search, combining all your keywords into a single `OR` query per check (one page, up to 20 results, per check — this is also the practical cost cap since billing is per tweet returned).
-- Both sources check against the same keyword list. Matches from either are posted to the same Discord channel, tagged with which source and subreddit/account they came from.
-- Watched subreddits/keywords and the alert channel are stored in `data/store.json`, managed entirely through the slash commands above.
-- Seen post/comment/tweet IDs are stored in `data/seen.json` so restarts don't re-post old matches.
+1. **Fetch**: Reddit posts/comments per subreddit come from [Arctic Shift](https://arctic-shift.photon-reddit.com), a free, unauthenticated Reddit archive — new content appears within minutes of posting. Twitter/X comes from TwitterAPI.io's advanced search (all keywords combined into one `OR` query per check).
+2. **Keyword pre-filter**: each fetched item is checked against your keyword list locally — this is free and cheap, and most items get discarded here without ever reaching Claude.
+3. **Classification**: only keyword matches get sent to Claude (`claude-opus-5`), which decides `course` / `ecommerce` / `none` and writes a one-sentence summary explaining why.
+4. **Post**: `course` and `ecommerce` leads go to their respective Discord channel with the summary attached; `none` is dropped. If a lead's channel isn't set yet, it's retried on the next check instead of being lost.
+5. Watched subreddits/keywords/channels are stored in `data/store.json`, managed entirely through the slash commands above. Seen post/comment/tweet IDs are stored in `data/seen.json` so restarts don't re-post old matches.
