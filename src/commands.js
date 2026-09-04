@@ -2,6 +2,25 @@ import { SlashCommandBuilder } from 'discord.js';
 import { store } from './store.js';
 import { config } from './config.js';
 
+// Discord message content is capped at 2000 chars — with 100+ subreddits or
+// keywords, joining the full list can blow past that and make the whole
+// reply fail. Truncate to a safe budget and say how many were left out.
+function formatList(items, render, budget = 1500) {
+  if (items.length === 0) return 'none';
+  let out = '';
+  let shown = 0;
+  for (const item of items) {
+    const piece = (shown === 0 ? '' : ', ') + render(item);
+    if (out.length + piece.length > budget) break;
+    out += piece;
+    shown++;
+  }
+  if (shown < items.length) {
+    out += ` … and ${items.length - shown} more (${items.length} total)`;
+  }
+  return out;
+}
+
 export const commandDefinitions = [
   new SlashCommandBuilder()
     .setName('keyword-add')
@@ -75,9 +94,7 @@ export async function handleCommand(interaction) {
     }
     case 'keyword-list': {
       const keywords = store.getKeywords();
-      await interaction.reply(
-        keywords.length ? `Watched keywords: ${keywords.map((k) => `\`${k}\``).join(', ')}` : 'No keywords set yet.'
-      );
+      await interaction.reply(`Watched keywords: ${formatList(keywords, (k) => `\`${k}\``)}`);
       break;
     }
     case 'keyword-add-bulk': {
@@ -110,9 +127,7 @@ export async function handleCommand(interaction) {
     }
     case 'subreddit-list': {
       const subs = store.getSubreddits();
-      await interaction.reply(
-        subs.length ? `Monitored subreddits: ${subs.map((s) => `r/${s}`).join(', ')}` : 'No subreddits set yet.'
-      );
+      await interaction.reply(`Monitored subreddits: ${formatList(subs, (s) => `r/${s}`)}`);
       break;
     }
     case 'subreddit-add-bulk': {
@@ -136,8 +151,8 @@ export async function handleCommand(interaction) {
       const courseChannelId = store.getCourseChannelId();
       await interaction.reply(
         [
-          `**Subreddits:** ${subs.length ? subs.map((s) => `r/${s}`).join(', ') : 'none'}`,
-          `**Keywords:** ${keywords.length ? keywords.map((k) => `\`${k}\``).join(', ') : 'none'}`,
+          `**Subreddits (${subs.length}):** ${formatList(subs, (s) => `r/${s}`, 600)}`,
+          `**Keywords (${keywords.length}):** ${formatList(keywords, (k) => `\`${k}\``, 600)}`,
           `**Course-lead channel:** ${courseChannelId ? `<#${courseChannelId}>` : 'not set — run /set-course-channel here'}`,
           `**Reddit (posts + comments, via Arctic Shift):** every 5 min`,
           `**Twitter/X:** ${config.twitter.apiKey ? 'every 5 min' : 'disabled — no TWITTERAPI_KEY set'}`,
