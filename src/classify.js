@@ -7,10 +7,10 @@ import { config } from './config.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const usageLogPath = path.join(__dirname, '..', 'data', 'claude-usage.log');
 
-function logUsage(usage) {
+function logClassification(entry) {
   try {
     mkdirSync(path.dirname(usageLogPath), { recursive: true });
-    const line = JSON.stringify({ time: new Date().toISOString(), ...usage });
+    const line = JSON.stringify({ time: new Date().toISOString(), ...entry });
     appendFileSync(usageLogPath, line + '\n');
   } catch {
     // Logging failures shouldn't affect classification.
@@ -53,18 +53,20 @@ export async function classifyLead(text) {
       messages: [{ role: 'user', content: text.slice(0, 4000) }],
     });
 
-    logUsage(response.usage);
-
     const textBlock = response.content.find((b) => b.type === 'text');
-    if (!textBlock) return { category: 'none', summary: '' };
-
-    const parsed = JSON.parse(textBlock.text.trim());
-    if (!['course', 'none'].includes(parsed.category)) {
+    if (!textBlock) {
+      logClassification({ text: text.slice(0, 200), category: 'none', summary: '(no text block in response)', usage: response.usage });
       return { category: 'none', summary: '' };
     }
-    return { category: parsed.category, summary: parsed.summary || '' };
+
+    const parsed = JSON.parse(textBlock.text.trim());
+    const category = ['course', 'none'].includes(parsed.category) ? parsed.category : 'none';
+    const summary = parsed.summary || '';
+    logClassification({ text: text.slice(0, 200), category, summary, usage: response.usage });
+    return { category, summary };
   } catch (err) {
     console.error('Lead classification failed:', err.message);
+    logClassification({ text: text.slice(0, 200), category: 'none', summary: `(error: ${err.message})` });
     return { category: 'none', summary: '' };
   }
 }
