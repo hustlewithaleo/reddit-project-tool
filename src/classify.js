@@ -1,5 +1,21 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { appendFileSync, mkdirSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const usageLogPath = path.join(__dirname, '..', 'data', 'claude-usage.log');
+
+function logUsage(usage) {
+  try {
+    mkdirSync(path.dirname(usageLogPath), { recursive: true });
+    const line = JSON.stringify({ time: new Date().toISOString(), ...usage });
+    appendFileSync(usageLogPath, line + '\n');
+  } catch {
+    // Logging failures shouldn't affect classification.
+  }
+}
 
 let client = null;
 function getClient() {
@@ -33,9 +49,11 @@ export async function classifyLead(text) {
     const response = await getClient().messages.create({
       model: 'claude-opus-5',
       max_tokens: 512,
-      system: SYSTEM_PROMPT,
+      system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral', ttl: '1h' } }],
       messages: [{ role: 'user', content: text.slice(0, 4000) }],
     });
+
+    logUsage(response.usage);
 
     const textBlock = response.content.find((b) => b.type === 'text');
     if (!textBlock) return { category: 'none', summary: '' };
