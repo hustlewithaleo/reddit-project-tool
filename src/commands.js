@@ -30,6 +30,15 @@ export const commandDefinitions = [
       opt.setName('name').setDescription('Subreddit name, without r/').setRequired(true)
     ),
   new SlashCommandBuilder().setName('subreddit-list').setDescription('List monitored subreddits'),
+  new SlashCommandBuilder()
+    .setName('subreddit-add-bulk')
+    .setDescription('Add many subreddits at once')
+    .addStringOption((opt) =>
+      opt
+        .setName('names')
+        .setDescription('Comma-separated subreddit names, without r/')
+        .setRequired(true)
+    ),
 
   new SlashCommandBuilder()
     .setName('set-course-channel')
@@ -89,6 +98,15 @@ export async function handleCommand(interaction) {
       await interaction.reply(
         subs.length ? `Monitored subreddits: ${subs.map((s) => `r/${s}`).join(', ')}` : 'No subreddits set yet.'
       );
+      break;
+    }
+    case 'subreddit-add-bulk': {
+      const names = interaction.options.getString('names').split(',').map((s) => s.trim()).filter(Boolean);
+      let added = 0;
+      for (const name of names) {
+        if (store.addSubreddit(name)) added++;
+      }
+      await interaction.reply(`Added ${added} new subreddit(s). Monitoring ${store.getSubreddits().length} total.`);
       break;
     }
 

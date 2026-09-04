@@ -29,6 +29,7 @@ Reddit itself needs no API key or paid service — it uses a free public archive
 - `/subreddit-add name:<sub>` — monitor a subreddit (Reddit only — Twitter/X search isn't scoped to a subforum)
 - `/subreddit-remove name:<sub>` — stop monitoring a subreddit
 - `/subreddit-list` — show monitored subreddits
+- `/subreddit-add-bulk names:<sub1,sub2,...>` — add many subreddits at once, comma-separated
 - `/set-course-channel` — run this in the channel where course leads should post
 - `/status` — show current config
 
